@@ -1,7 +1,7 @@
 """
 models.py — Motor numérico del laboratorio de volatilidad estocástica (EDE).
 
-Todos los modelos comparten la misma ecuación de precio
+Todos los modelos comparten la misma ecuación para la variable observada X_t
 
     usual :  dX = μ_t X dt + √V_t X dB¹
     redef.:  dX = α(μ_t − X) dt + √V_t X dB²          (reversión a la media)
@@ -283,7 +283,7 @@ def simulate(cfg: SimConfig, Z: np.ndarray) -> SimResult:
             sv = np.sqrt(vp)
             mu_k = Mu[k] if stoch else mu_grid[k]
 
-            # ── precio ──────────────────────────────────────────────────────
+            # ── variable observada ──────────────────────────────────────────────────────
             if usual:
                 X[k + 1] = X[k] * np.exp((mu_k - 0.5 * vp) * dt + sv * sq * z1)
             else:

@@ -39,7 +39,7 @@ def get_noise(seed: int, n_paths: int, n_steps: int) -> np.ndarray:
 #  Panel de control
 # ═════════════════════════════════════════════════════════════════════════════
 def trend_controls(drift: str, trend: str, x0: float) -> dict:
-    """Sliders de μ. Con reversión a la media, μ es un *nivel* (en unidades de precio)."""
+    """Sliders de μ. Con reversión a la media, μ es un *nivel* (en unidades de X)."""
     mr = drift == "mr"
     tag = f"{drift}_{trend}" + (f"_{x0:g}" if mr else "")   # clave nueva si cambia X₀ (cambian los rangos)
 
@@ -49,7 +49,7 @@ def trend_controls(drift: str, trend: str, x0: float) -> dict:
     per = ("1 año = ciclo estacional (viento, calor, agua…).",)
     if mr:
         lo, hi, st_ = 0.2 * x0, 3.0 * x0, x0 / 100
-        lvl = "Nivel (en unidades de precio) hacia el que X_t es atraído."
+        lvl = "Nivel (en unidades de X) hacia el que X_t es atraído."
         if trend == "const":
             return {"mu": sl(r"$\mu$ — nivel de reversión", lo, hi, 1.2 * x0, st_, "mu", lvl)}
         if trend == "periodic":
@@ -93,7 +93,7 @@ with st.sidebar:
                          width="stretch") or "hull_white"
     spec = MODELS[model_key]
 
-    section("Deriva del precio")
+    section("Deriva de la variable observada")
     drift = st.segmented_control("Deriva", ["usual", "mr"], key="drift", default="usual",
                                  label_visibility="collapsed", width="stretch",
                                  format_func=lambda k: "Usual" if k == "usual" else "Reversión a la media") or "usual"
@@ -101,7 +101,7 @@ with st.sidebar:
     if drift == "mr":
         alpha = slider(r"$\alpha$ — velocidad de reversión", 0.1, 15.0, 3.0, 0.1, key="alpha",
                        help="Con α grande, X_t pega rápido a μ_t.")
-    x0 = slider(r"$X_0$ — precio inicial", 10.0, 1000.0, 100.0, 10.0, key="x0")
+    x0 = slider(r"$X_0$ — valor inicial", 10.0, 1000.0, 100.0, 10.0, key="x0")
 
     section('Tendencia <span class="nt">μ</span>')
     trend = st.segmented_control("Tendencia", ["const", "periodic", "stoch"], key="trend", default="const",
@@ -116,7 +116,7 @@ with st.sidebar:
           for p in spec.params}
     rho = slider(r"$\rho$ — correlación $B^{(1)}$, $B^{(2)}$", -0.99, 0.99,
                  0.0 if model_key == "hull_white" else -0.5, 0.01, key=f"rho_{model_key}",
-                 help="ρ < 0: efecto apalancamiento (el precio cae cuando sube la volatilidad).")
+                 help="ρ < 0: efecto apalancamiento (X cae cuando sube la volatilidad).")
 
     section("Simulación")
     with st.expander("Horizonte, pasos, trayectorias y semilla", expanded=False):
@@ -317,8 +317,8 @@ stats([
 tab_paths, tab_dist, tab_guide = st.tabs(["Trayectorias", "Distribución y teoría", "Guía"])
 
 with tab_paths:
-    ptitle("Precio Xₜ", f"{n_show} de {n_paths:,} trayectorias · T = {T:g} años")
-    line_chart("precio", X, x_mean, x_sd, th_mean=th_x,
+    ptitle("Variable observada Xₜ", f"{n_show} de {n_paths:,} trayectorias · T = {T:g} años")
+    line_chart("observada", X, x_mean, x_sd, th_mean=th_x,
                ref_mean=None if ref is None else ref["x_mean"], ref_sd=None if ref is None else ref["x_sd"],
                ytitle="X_t", fmt=",.2f", height=420)
     if ref is not None:
@@ -327,7 +327,7 @@ with tab_paths:
     has_mu_panel = trend != "const"
     cols = st.columns(2, gap="large") if has_mu_panel else [st.container()]
     with cols[0]:
-        ptitle("Varianza Vₜ", spec.name)
+        ptitle("Varianza latente Vₜ", spec.name)
         line_chart("varianza", V, v_mean, v_sd,
                    th_mean=None if th_v is None else th_v[0], th_sd=None if th_v is None else np.sqrt(th_v[1]),
                    ref_mean=None if ref is None else ref["v_mean"], ref_sd=None if ref is None else ref["v_sd"],
@@ -491,5 +491,5 @@ Mercados de energía: variables climáticas (viento, calor, agua) y energéticas
     st.info(
         "**Nota sobre Scott.** En la foto del tablero, la difusión de $V_t$ aparece como "
         "$\\sqrt{V_t}\\,X_t\\,dB^{(2)}_t$. Aquí se usó $\\sigma\\sqrt{V_t}\\,dB^{(2)}_t$ (como en Heston): "
-        "con un factor $X_t$ la varianza dependería del nivel del precio. Conviene confirmarlo con el profesor.",
+        "con un factor $X_t$ la varianza dependería del nivel de X_t. Conviene confirmarlo con el profesor.",
         icon="📝")
