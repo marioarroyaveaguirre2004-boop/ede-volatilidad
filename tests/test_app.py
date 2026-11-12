@@ -88,6 +88,22 @@ def test_new_seed_and_unfrozen_noise():
     assert not at.exception
 
 
+def test_compare_and_animate():
+    at = fresh()
+    at.toggle(key="animate").set_value(True)
+    at.toggle(key="compare").set_value(True)
+    at.run()
+    assert not at.exception, [e.value for e in at.exception]
+    at.pills(key="model_b").set_value("scott")
+    at.segmented_control(key="trend").set_value("stoch")
+    at.run()
+    assert not at.exception, [e.value for e in at.exception]
+    # el modelo A pasa a ser el que era B: la app debe elegir otro B sin romperse
+    at.pills(key="model").set_value("scott")
+    at.run()
+    assert not at.exception, [e.value for e in at.exception]
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for fn in tests:

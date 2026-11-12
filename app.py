@@ -118,6 +118,22 @@ with st.sidebar:
                  0.0 if model_key == "hull_white" else -0.5, 0.01, key=f"rho_{model_key}",
                  help="ρ < 0: efecto apalancamiento (X cae cuando sube la volatilidad).")
 
+    section("Comparar")
+    compare = st.toggle("Comparar con otro modelo", False, key="compare",
+                        help="Simula un segundo modelo con el mismo ruido browniano, la misma deriva, "
+                             "tendencia, V₀ y ρ. Las diferencias se deben solo a la ecuación de Vₜ.")
+    model_b, vp_b = None, {}
+    if compare:
+        others = [k for k in MODELS if k != model_key]
+        model_b = st.pills("Modelo B", others, key="model_b", default=others[0], label_visibility="collapsed",
+                           format_func=lambda k: MODELS[k].name, width="stretch")
+        if model_b not in others:
+            model_b = others[0]
+        spec_b = MODELS[model_b]
+        with st.expander(f"Parámetros de {spec_b.name}", expanded=False):
+            vp_b = {p.key: slider(p.label, p.lo, p.hi, p.default, p.step, key=f"cmp_{model_b}_{p.key}", help=p.help or None)
+                    for p in spec_b.params}
+
     section("Simulación")
     with st.expander("Horizonte, pasos, trayectorias y semilla", expanded=False):
         T = slider("Horizonte $T$ (años)", 0.25, 5.0, 1.0, 0.25, key="T")
@@ -138,6 +154,9 @@ with st.sidebar:
     lock = st.toggle("Fijar ejes Y", False, key="lock",
                      help="Congela la escala vertical al activarlo, para ver cómo se mueve la nube "
                           "al cambiar un parámetro.")
+    animate = st.toggle("Animar en el tiempo", False, key="animate",
+                        help="Añade un botón ▶ a las gráficas de trayectorias: las curvas avanzan desde t = 0 "
+                             "y la banda se abre en vivo.")
     c1, c2 = st.columns(2)
     pin = c1.button("📌 Fijar", width="stretch",
                     help="Guarda la media y la banda actuales como línea gris punteada.")
@@ -161,6 +180,15 @@ x_mean, x_sd = X.mean(axis=1), X.std(axis=1)
 v_mean, v_sd = V.mean(axis=1), V.std(axis=1)
 th_x = theory_X_mean(cfg, t)
 th_v = theory_V(cfg, t)
+
+if compare:
+    cfg_b = SimConfig(model=model_b, vp=vp_b, v0=v0, x0=x0, rho=rho, T=T, steps_per_year=spy,
+                      drift=drift, alpha=alpha, trend=trend, tp=tp)
+    res_b = simulate(cfg_b, Z)
+    X_b, V_b = res_b.X, res_b.V
+    xb_mean, xb_sd = X_b.mean(axis=1), X_b.std(axis=1)
+    vb_mean, vb_sd = V_b.mean(axis=1), V_b.std(axis=1)
+    th_x_b, th_v_b = theory_X_mean(cfg_b, t), theory_V(cfg_b, t)
 
 if not lock:
     st.session_state.pop("ylock", None)
@@ -186,24 +214,47 @@ def decimate(n: int, max_pts: int = 400) -> np.ndarray:
 IDX = decimate(n_steps)
 
 
+def auto_range(Y, mean, sd, floor0=False, paths=True):
+    """Rango vertical que abarca la banda ±2σ y las trayectorias dibujadas."""
+    lo_b, hi_b = mean - 2 * sd, mean + 2 * sd
+    if floor0:
+        lo_b = np.maximum(lo_b, 0.0)
+    shown = [lo_b[IDX].min() if show_band else mean.min(), hi_b[IDX].max() if show_band else mean.max()]
+    if paths:
+        shown += [Y[IDX][:, :n_show].min(), Y[IDX][:, :n_show].max()]
+    lo, hi = float(np.nanmin(shown)), float(np.nanmax(shown))
+    pad = 0.05 * (hi - lo if hi > lo else 1.0)
+    return [lo - pad, hi + pad]
+
+
 def line_chart(name: str, Y: np.ndarray, mean: np.ndarray, sd: np.ndarray,
                th_mean=None, th_sd=None, ref_mean=None, ref_sd=None,
                ytitle: str = "", fmt: str = ".3f", height: int = 420, paths: bool = True,
-               floor0: bool = False):
+               floor0: bool = False, yrange=None):
     tt = t[IDX]
     fig = go.Figure()
     hv = f"%{{y:{fmt}}}"
+    dyn = []            # índices de las trazas que avanzan en la animación
+    Ys = None
+
+    def paths_xy(m):
+        xs = np.tile(np.append(tt[:m], np.nan), Ys.shape[1])
+        ys = np.vstack([Ys[:m], np.full((1, Ys.shape[1]), np.nan)]).T.ravel()
+        return xs, ys
 
     if paths and n_show > 1:
         Ys = Y[IDX][:, 1:min(n_show, Y.shape[1])]
         if Ys.shape[1] > 0:
-            xs = np.tile(np.append(tt, np.nan), Ys.shape[1])
-            ys = np.vstack([Ys, np.full((1, Ys.shape[1]), np.nan)]).T.ravel()
+            xs, ys = paths_xy(len(tt))
             fig.add_trace(go.Scatter(x=xs, y=ys, mode="lines", name="Trayectorias",
                                      line=dict(color=P["path"], width=1), hoverinfo="skip"))
+            dyn.append(len(fig.data) - 1)
+        else:
+            Ys = None
     if paths:
         fig.add_trace(go.Scatter(x=tt, y=Y[IDX, 0], mode="lines", name="Trayectoria destacada",
                                  line=dict(color=P["violet"], width=1.6), hoverinfo="skip"))
+        dyn.append(len(fig.data) - 1)
 
     lo_b, hi_b = mean - 2 * sd, mean + 2 * sd
     if floor0:
@@ -211,10 +262,12 @@ def line_chart(name: str, Y: np.ndarray, mean: np.ndarray, sd: np.ndarray,
     if show_band:
         fig.add_trace(go.Scatter(x=tt, y=lo_b[IDX], mode="lines", line=dict(color=P["primary"], width=.7, dash="dot"),
                                  showlegend=False, hovertemplate="Media − 2σ: " + hv + "<extra></extra>"))
+        dyn.append(len(fig.data) - 1)
         fig.add_trace(go.Scatter(x=tt, y=hi_b[IDX], mode="lines", name="Media ± 2σ (sim.)",
                                  line=dict(color=P["primary"], width=.7, dash="dot"),
                                  fill="tonexty", fillcolor=P["band"],
                                  hovertemplate="Media + 2σ: " + hv + "<extra></extra>"))
+        dyn.append(len(fig.data) - 1)
 
     if ref_mean is not None:
         fig.add_trace(go.Scatter(x=tt, y=ref_mean[IDX], mode="lines", name="Referencia fijada",
@@ -227,6 +280,7 @@ def line_chart(name: str, Y: np.ndarray, mean: np.ndarray, sd: np.ndarray,
 
     fig.add_trace(go.Scatter(x=tt, y=mean[IDX], mode="lines", name="Media simulada",
                              line=dict(color=P["ink"], width=2.4), hovertemplate=hv))
+    dyn.append(len(fig.data) - 1)
     if show_theory and th_mean is not None:
         fig.add_trace(go.Scatter(x=tt, y=th_mean[IDX], mode="lines", name="Media teórica",
                                  line=dict(color=P["orange"], width=2.4, dash="dash"), hovertemplate=hv))
@@ -236,12 +290,7 @@ def line_chart(name: str, Y: np.ndarray, mean: np.ndarray, sd: np.ndarray,
                                          name="Teórica ± 2σ", legendgroup="thband", showlegend=(sgn == 1),
                                          line=dict(color=P["orange"], width=1.1, dash="dot"), hovertemplate=hv))
 
-    shown = [lo_b[IDX].min() if show_band else mean.min(), hi_b[IDX].max() if show_band else mean.max()]
-    if paths:
-        shown += [Y[IDX][:, :n_show].min(), Y[IDX][:, :n_show].max()]
-    lo, hi = float(np.nanmin(shown)), float(np.nanmax(shown))
-    pad = 0.05 * (hi - lo if hi > lo else 1.0)
-    rng = [lo - pad, hi + pad]
+    rng = yrange if yrange is not None else auto_range(Y, mean, sd, floor0, paths)
     if ylock is not None:
         ylock.setdefault(name, rng)
         rng = ylock[name]
@@ -249,6 +298,37 @@ def line_chart(name: str, Y: np.ndarray, mean: np.ndarray, sd: np.ndarray,
     style(fig, P, height, "Tiempo t (años)", ytitle)
     fig.update_xaxes(range=[0, T])
     fig.update_yaxes(range=rng)
+
+    # ── animación: las trazas "dinámicas" avanzan desde t = 0; teoría y referencia quedan fijas ──
+    if animate and dyn:
+        n_fr = 48
+        frames = []
+        for f in range(1, n_fr + 1):
+            m = max(2, int(round(len(tt) * f / n_fr)))
+            data = []
+            for i in dyn:
+                tr = fig.data[i]
+                if tr.name == "Trayectorias" and Ys is not None:
+                    xs, ys = paths_xy(m)
+                    data.append(go.Scatter(x=xs, y=ys))
+                else:
+                    data.append(go.Scatter(x=tr.x[:m], y=tr.y[:m]))
+            frames.append(go.Frame(data=data, traces=dyn, name=str(f)))
+        fig.frames = frames
+        fig.update_layout(
+            margin=dict(t=40, b=8),
+            legend=dict(orientation="h", yanchor="top", y=-0.18, x=0),
+            updatemenus=[dict(
+                type="buttons", direction="left", showactive=False, x=1, xanchor="right", y=1.0, yanchor="bottom",
+                pad=dict(r=0, t=0), bgcolor=P["surface"], bordercolor=P["hair2"], borderwidth=1,
+                font=dict(size=11, color=P["ink2"]),
+                buttons=[
+                    dict(label="▶  Reproducir", method="animate",
+                         args=[None, dict(frame=dict(duration=45, redraw=False), transition=dict(duration=0),
+                                          fromcurrent=False, mode="immediate")]),
+                    dict(label="❚❚", method="animate",
+                         args=[[None], dict(frame=dict(duration=0, redraw=False), mode="immediate")]),
+                ])])
     st.plotly_chart(fig, key=f"chart_{name}", config={**PLOT_CONFIG, "toImageButtonOptions": {"scale": 2, "filename": name}})
 
 
@@ -264,7 +344,8 @@ drift_txt = "Deriva usual" if drift == "usual" else "Reversión a la media"
 trend_txt = {"const": "Tendencia constante", "periodic": "Tendencia periódica", "stoch": "Tendencia estocástica"}[trend]
 hr.markdown(f'<div class="chips"><span class="chip on">{spec.name}</span>'
             f'<span class="chip">{drift_txt}</span><span class="chip">{trend_txt}</span>'
-            f'<span class="chip">ρ = {rho:g}</span></div>', unsafe_allow_html=True)
+            f'<span class="chip">ρ = {rho:g}</span>'
+            + (f'<span class="chip">vs {MODELS[model_b].name}</span>' if compare else "") + '</div>', unsafe_allow_html=True)
 st.markdown('<div class="hdr-rule"></div>', unsafe_allow_html=True)
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -317,23 +398,61 @@ stats([
 tab_paths, tab_dist, tab_guide = st.tabs(["Trayectorias", "Distribución y teoría", "Guía"])
 
 with tab_paths:
-    ptitle("Variable observada Xₜ", f"{n_show} de {n_paths:,} trayectorias · T = {T:g} años")
-    line_chart("observada", X, x_mean, x_sd, th_mean=th_x,
-               ref_mean=None if ref is None else ref["x_mean"], ref_sd=None if ref is None else ref["x_sd"],
-               ytitle="X_t", fmt=",.2f", height=420)
-    if ref is not None:
-        st.caption(f"Referencia fijada: {ref['label']}")
+    if compare:
+        spec_b = MODELS[model_b]
+        st.caption("Mismo ruido browniano, misma deriva, tendencia, V₀ y ρ para los dos modelos: "
+                   "las diferencias se deben solo a la ecuación de Vₜ.")
+        rx, rxb = auto_range(X, x_mean, x_sd), auto_range(X_b, xb_mean, xb_sd)
+        rx = [min(rx[0], rxb[0]), max(rx[1], rxb[1])]
+        fl_a, fl_b = model_key != "stein_stein", model_b != "stein_stein"
+        rv, rvb = auto_range(V, v_mean, v_sd, fl_a), auto_range(V_b, vb_mean, vb_sd, fl_b)
+        rv = [min(rv[0], rvb[0]), max(rv[1], rvb[1])]
+        cA, cB = st.columns(2, gap="large")
+        with cA:
+            ptitle("Variable observada Xₜ", f"A · {spec.name}")
+            line_chart("observada_A", X, x_mean, x_sd, th_mean=th_x, ytitle="X_t", fmt=",.2f", height=380, yrange=rx)
+            ptitle("Varianza latente Vₜ", f"A · {spec.name}")
+            line_chart("varianza_A", V, v_mean, v_sd,
+                       th_mean=None if th_v is None else th_v[0], th_sd=None if th_v is None else np.sqrt(th_v[1]),
+                       ytitle="V_t", fmt=".4f", height=320, floor0=fl_a, yrange=rv)
+        with cB:
+            ptitle("Variable observada Xₜ", f"B · {spec_b.name}")
+            line_chart("observada_B", X_b, xb_mean, xb_sd, th_mean=th_x_b, ytitle="X_t", fmt=",.2f", height=380, yrange=rx)
+            ptitle("Varianza latente Vₜ", f"B · {spec_b.name}")
+            line_chart("varianza_B", V_b, vb_mean, vb_sd,
+                       th_mean=None if th_v_b is None else th_v_b[0], th_sd=None if th_v_b is None else np.sqrt(th_v_b[1]),
+                       ytitle="V_t", fmt=".4f", height=320, floor0=fl_b, yrange=rv)
+        xTb, vTb = X_b[-1], V_b[-1]
+        ptitle("A frente a B", "en t = T")
+        st.write("")
+        st.dataframe(pd.DataFrame({
+            "Magnitud": ["E[X_T]", "Desv. est. de X_T", "E[V_T]", "Volatilidad √E[V_T]", "P(X_T < X₀)"],
+            f"A · {spec.name}": [f"{xT.mean():,.2f}", f"{xT.std():,.2f}", f"{vT.mean():.4f}",
+                                 f"{np.sqrt(max(vT.mean(), 0)):.1%}", f"{(xT < x0).mean():.1%}"],
+            f"B · {spec_b.name}": [f"{xTb.mean():,.2f}", f"{xTb.std():,.2f}", f"{vTb.mean():.4f}",
+                                   f"{np.sqrt(max(vTb.mean(), 0)):.1%}", f"{(xTb < x0).mean():.1%}"],
+        }), hide_index=True, width="stretch")
+    else:
+        ptitle("Variable observada Xₜ", f"{n_show} de {n_paths:,} trayectorias · T = {T:g} años")
+        line_chart("observada", X, x_mean, x_sd, th_mean=th_x,
+                   ref_mean=None if ref is None else ref["x_mean"], ref_sd=None if ref is None else ref["x_sd"],
+                   ytitle="X_t", fmt=",.2f", height=420)
+        if ref is not None:
+            st.caption(f"Referencia fijada: {ref['label']}")
 
     has_mu_panel = trend != "const"
-    cols = st.columns(2, gap="large") if has_mu_panel else [st.container()]
-    with cols[0]:
-        ptitle("Varianza latente Vₜ", spec.name)
-        line_chart("varianza", V, v_mean, v_sd,
-                   th_mean=None if th_v is None else th_v[0], th_sd=None if th_v is None else np.sqrt(th_v[1]),
-                   ref_mean=None if ref is None else ref["v_mean"], ref_sd=None if ref is None else ref["v_sd"],
-                   ytitle="V_t", fmt=".4f", height=340, floor0=model_key != "stein_stein")
-        if th_v is None:
-            st.caption("Scott no tiene momentos de $V_t$ en forma cerrada: solo se muestra la simulación.")
+    if compare:
+        cols = [st.container(), st.container()]
+    else:
+        cols = st.columns(2, gap="large") if has_mu_panel else [st.container()]
+        with cols[0]:
+            ptitle("Varianza latente Vₜ", spec.name)
+            line_chart("varianza", V, v_mean, v_sd,
+                       th_mean=None if th_v is None else th_v[0], th_sd=None if th_v is None else np.sqrt(th_v[1]),
+                       ref_mean=None if ref is None else ref["v_mean"], ref_sd=None if ref is None else ref["v_sd"],
+                       ytitle="V_t", fmt=".4f", height=340, floor0=model_key != "stein_stein")
+            if th_v is None:
+                st.caption("Scott no tiene momentos de $V_t$ en forma cerrada: solo se muestra la simulación.")
     if has_mu_panel:
         with cols[1]:
             if trend == "periodic":
