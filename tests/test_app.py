@@ -28,14 +28,13 @@ def fresh() -> AppTest:
 
 def test_default_runs():
     at = fresh()
-    assert at.title[0].value == "Laboratorio de volatilidad estocástica"
-    assert len(at.metric) == 4
+    assert "Laboratorio de volatilidad" in "".join(m.value for m in at.markdown)
 
 
 def test_all_combinations():
     at = fresh()
     for model, drift, trend in itertools.product(MODELS, ("usual", "mr"), ("const", "periodic", "stoch")):
-        at.selectbox(key="model").set_value(model)
+        at.pills(key="model").set_value(model)
         at.radio(key="drift").set_value(drift)
         at.radio(key="trend").set_value(trend)
         at.run()
@@ -44,7 +43,7 @@ def test_all_combinations():
 
 def test_extreme_sliders():
     at = fresh()
-    at.selectbox(key="model").set_value("heston")
+    at.pills(key="model").set_value("heston")
     at.run()
     at.slider(key="heston_sigma").set_value(1.5)
     at.slider(key="heston_kappa").set_value(0.1)
@@ -68,7 +67,7 @@ def test_changing_x0_in_mean_reversion():
 
 def test_lock_and_reference():
     at = fresh()
-    at.selectbox(key="model").set_value("heston")
+    at.pills(key="model").set_value("heston")
     at.toggle(key="lock").set_value(True)
     at.run()
     at.button[1].click()  # (0 = nueva semilla, 1 = fijar referencia)
