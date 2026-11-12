@@ -16,11 +16,13 @@ FONT = "Inter, system-ui, -apple-system, 'Segoe UI', sans-serif"
 # ═════════════════════════════════════════════════════════════════════════════
 #  Paleta — una sola fuente de verdad para CSS y Plotly
 # ═════════════════════════════════════════════════════════════════════════════
-def palette() -> dict:
-    try:
-        dark = st.context.theme.type == "dark"
-    except Exception:
-        dark = False
+def palette(dark: bool = False) -> dict:
+    """La app se sirve siempre con el tema claro definido en .streamlit/config.toml.
+
+    No se usa st.context.theme: en Streamlit Cloud puede reportar «dark» (por la
+    preferencia del sistema) mientras la página se pinta con el tema claro del
+    archivo de configuración, y los textos quedan invisibles.
+    """
     if dark:
         return dict(
             dark=True,
@@ -86,7 +88,7 @@ hr {{ margin: .6rem 0 .9rem; border-color: var(--hair) !important; }}
 [class*="st-key-sl_"] [data-testid="stHorizontalBlock"] > *:last-child {{ flex: 0 0 auto !important; }}
 [class*="st-key-sl_"] [data-testid="stMarkdownContainer"] p {{ margin: 0; font-size: .86rem; color: var(--ink2); }}
 [class*="st-key-sl_"] .val {{
-  font-variant-numeric: tabular-nums; font-weight: 600; font-size: .86rem; color: var(--ink);
+  font-variant-numeric: tabular-nums; font-weight: 600; font-size: .86rem; color: inherit;
   text-align: right; white-space: nowrap;
 }}
 [class*="st-key-sl_"] [data-testid="stSlider"] {{ margin-top: -.35rem; }}
@@ -113,29 +115,30 @@ hr {{ margin: .6rem 0 .9rem; border-color: var(--hair) !important; }}
 .chips {{ display: flex; gap: .4rem; flex-wrap: wrap; justify-content: flex-end; padding-top: .35rem; }}
 .chip {{
   font-size: .74rem; font-weight: 600; padding: .28rem .65rem; border-radius: 999px;
-  border: 1px solid var(--hair2); color: var(--ink2); background: var(--surface); white-space: nowrap;
+  border: 1px solid color-mix(in srgb, currentColor 22%, transparent); color: inherit; opacity: .85;
+  background: color-mix(in srgb, currentColor 5%, transparent); white-space: nowrap;
 }}
-.chip.on {{ background: var(--primary); border-color: var(--primary); color: #fff; }}
+.chip.on {{ background: var(--primary); border-color: var(--primary); color: #fff; opacity: 1; }}
 /* ── tarjeta de ecuaciones ─────────────────────────────────────────────── */
 .st-key-eq_card {{
-  background: {P['tint']}; border: 1px solid var(--hair); border-radius: 14px;
+  background: {P['tint']}; border: 1px solid color-mix(in srgb, currentColor 12%, transparent); border-radius: 14px;
   padding: 1.1rem 1.4rem .6rem; margin: 1rem 0 .4rem;
 }}
 .st-key-eq_card .katex-display {{ margin: .2rem 0 .6rem; }}
 .st-key-eq_card .katex {{ font-size: 1.12em; }}
-.eq-side {{ font-size: .88rem; color: var(--ink2); line-height: 1.5; }}
-.eq-side b {{ color: var(--ink); }}
+.eq-side {{ font-size: .88rem; line-height: 1.5; }}
+.eq-side b {{ color: inherit; font-weight: 650; }}
 .tag {{ display: inline-block; font-size: .72rem; font-weight: 600; padding: .14rem .5rem; border-radius: 6px;
         background: var(--surface2); color: var(--ink2); border: 1px solid var(--hair); }}
 .tag.good {{ color: {P['good']}; }} .tag.warn {{ color: {P['warn']}; }} .tag.info {{ color: var(--primary); }}
 /* ── estadísticas sin caja ─────────────────────────────────────────────── */
 .stats {{ display: grid; grid-template-columns: repeat(4, 1fr); margin: .4rem 0 .2rem; }}
-.stat {{ padding: .55rem 1.1rem .55rem 0; border-right: 1px solid var(--hair); }}
+.stat {{ padding: .55rem 1.1rem .55rem 0; border-right: 1px solid color-mix(in srgb, currentColor 14%, transparent); }}
 .stat + .stat {{ padding-left: 1.1rem; }}
 .stat:last-child {{ border-right: 0; }}
 .stat .k {{ font-size: .72rem; color: var(--muted); font-weight: 500; letter-spacing: .02em; }}
 .stat .v {{ font-size: 1.55rem; font-weight: 650; letter-spacing: -.02em; line-height: 1.2; margin-top: .1rem;
-            font-variant-numeric: tabular-nums; color: var(--ink); }}
+            font-variant-numeric: tabular-nums; color: inherit; }}
 .stat .d {{ font-size: .74rem; color: var(--muted); margin-top: .1rem; font-variant-numeric: tabular-nums; }}
 @media (max-width: 900px) {{ .stats {{ grid-template-columns: repeat(2, 1fr); }} .stat:nth-child(2) {{ border-right: 0; }} }}
 /* ── pestañas, títulos de gráfica, notas ───────────────────────────────── */
