@@ -256,7 +256,7 @@ def line_chart(name: str, Y: np.ndarray, mean: np.ndarray, sd: np.ndarray,
 #  Encabezado
 # ═════════════════════════════════════════════════════════════════════════════
 hl, hr = st.columns([3, 2], vertical_alignment="center")
-hl.markdown('<p class="eyebrow">Ecuaciones diferenciales estocásticas · EAFIT</p>'
+hl.markdown('<p class="eyebrow">Ecuaciones diferenciales estocásticas</p>'
             '<p class="hdr-title">Laboratorio de volatilidad estocástica</p>'
             '<p class="hdr-sub">Cinco modelos de volatilidad, dos derivas y tres tendencias, con simulación y teoría lado a lado.</p>',
             unsafe_allow_html=True)

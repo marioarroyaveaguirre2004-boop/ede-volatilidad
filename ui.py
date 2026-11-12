@@ -183,7 +183,7 @@ def section(text: str, first: bool = False) -> None:
 
 def brand() -> None:
     st.markdown('<div class="brand"><div class="mark">σ</div><div><div class="t">Laboratorio EDE</div>'
-                '<div class="s">VOLATILIDAD ESTOCÁSTICA · EAFIT</div></div></div>', unsafe_allow_html=True)
+                '<div class="s">ECUACIONES DIFERENCIALES ESTOCÁSTICAS</div></div></div>', unsafe_allow_html=True)
 
 
 def _decimals(step: float) -> int:
