@@ -15,7 +15,7 @@ from models import (
     MODELS, SimConfig, make_noise, mu_det, mu_mean, mu_std, simulate,
     theory_V, theory_V_pdf, theory_X_mean,
 )
-from ui import PLOT_CONFIG, inject_css, palette, ptitle, section, slider, stats, style
+from ui import PLOT_CONFIG, brand, inject_css, palette, ptitle, section, slider, stats, style
 
 st.set_page_config(page_title="Laboratorio de volatilidad estocástica",
                    page_icon="📈", layout="wide")
@@ -86,26 +86,30 @@ if "seed" not in st.session_state:
     st.session_state["seed"] = 2026
 
 with st.sidebar:
-    section("Modelo de volatilidad")
+    brand()
+    section("Modelo de volatilidad", first=True)
     model_key = st.pills("Modelo", list(MODELS), key="model", default="hull_white",
                          format_func=lambda k: MODELS[k].name, label_visibility="collapsed",
                          width="stretch") or "hull_white"
     spec = MODELS[model_key]
 
-    section("Tendencia de Xₜ")
-    drift = st.radio("Término de tendencia", ["usual", "mr"], key="drift", label_visibility="collapsed",
-                     format_func=lambda k: (r"Usual  ·  $\mu_t X_t\,dt$" if k == "usual"
-                                            else r"Reversión a la media  ·  $\alpha(\mu_t - X_t)\,dt$"))
+    section("Deriva del precio")
+    drift = st.segmented_control("Deriva", ["usual", "mr"], key="drift", default="usual",
+                                 label_visibility="collapsed", width="stretch",
+                                 format_func=lambda k: "Usual" if k == "usual" else "Reversión a la media") or "usual"
     alpha = 3.0
     if drift == "mr":
-        alpha = slider(r"$\alpha$ — velocidad de reversión de $X$", 0.1, 15.0, 3.0, 0.1, key="alpha",
+        alpha = slider(r"$\alpha$ — velocidad de reversión", 0.1, 15.0, 3.0, 0.1, key="alpha",
                        help="Con α grande, X_t pega rápido a μ_t.")
     x0 = slider(r"$X_0$ — precio inicial", 10.0, 1000.0, 100.0, 10.0, key="x0")
-    trend = st.radio("Tipo de μ", ["const", "periodic", "stoch"], key="trend", horizontal=True,
-                     label_visibility="collapsed", format_func=lambda k: TREND_NAME[k])
+
+    section('Tendencia <span class="nt">μ</span>')
+    trend = st.segmented_control("Tendencia", ["const", "periodic", "stoch"], key="trend", default="const",
+                                 label_visibility="collapsed", width="stretch",
+                                 format_func=lambda k: {"const": "Constante", "periodic": "Periódica", "stoch": "Estocástica"}[k]) or "const"
     tp = trend_controls(drift, trend, x0)
 
-    section(f"Varianza — {spec.name}")
+    section(f"Varianza · {spec.name}")
     v0 = slider(r"$V_0$ — varianza inicial", 0.001, 0.50, 0.04, 0.001, key="v0",
                 help="0.04 ⇒ volatilidad inicial √V₀ = 20 %.")
     vp = {p.key: slider(p.label, p.lo, p.hi, p.default, p.step, key=f"{model_key}_{p.key}", help=p.help or None)
@@ -252,14 +256,16 @@ def line_chart(name: str, Y: np.ndarray, mean: np.ndarray, sd: np.ndarray,
 #  Encabezado
 # ═════════════════════════════════════════════════════════════════════════════
 hl, hr = st.columns([3, 2], vertical_alignment="center")
-hl.markdown('<p class="hdr-title">Laboratorio de volatilidad estocástica</p>'
-            '<p class="hdr-sub">Ecuaciones Diferenciales Estocásticas · Ingeniería Matemática, EAFIT</p>',
+hl.markdown('<p class="eyebrow">Ecuaciones diferenciales estocásticas · EAFIT</p>'
+            '<p class="hdr-title">Laboratorio de volatilidad estocástica</p>'
+            '<p class="hdr-sub">Cinco modelos de volatilidad, dos derivas y tres tendencias, con simulación y teoría lado a lado.</p>',
             unsafe_allow_html=True)
-drift_txt = "deriva usual" if drift == "usual" else "reversión a la media"
-trend_txt = {"const": "μ constante", "periodic": "μ(t) periódica", "stoch": "μₜ estocástica"}[trend]
+drift_txt = "Deriva usual" if drift == "usual" else "Reversión a la media"
+trend_txt = {"const": "Tendencia constante", "periodic": "Tendencia periódica", "stoch": "Tendencia estocástica"}[trend]
 hr.markdown(f'<div class="chips"><span class="chip on">{spec.name}</span>'
             f'<span class="chip">{drift_txt}</span><span class="chip">{trend_txt}</span>'
             f'<span class="chip">ρ = {rho:g}</span></div>', unsafe_allow_html=True)
+st.markdown('<div class="hdr-rule"></div>', unsafe_allow_html=True)
 
 # ═════════════════════════════════════════════════════════════════════════════
 #  Ecuaciones
@@ -280,10 +286,11 @@ with st.container(key="eq_card"):
     cls, txt = TREND_TAG[trend]
     mu_sym = {"const": "μ", "periodic": "μ(t)", "stoch": "μₜ"}[trend]
     right.markdown(
-        f'<div class="eq-side"><b>{spec.name}.</b> {spec.summary}<br><br>'
-        f'<b>Tendencia {mu_sym}</b> &nbsp;<span class="tag {cls}">{txt}</span><br><br>'
-        f'<span class="note">Vₜ es inobservable ⇒ sus parámetros se obtienen por calibración.</span></div>',
-        unsafe_allow_html=True)
+        f'<dl class="dl">'
+        f'<dt>Modelo</dt><dd><b>{spec.name}.</b> {spec.summary}</dd>'
+        f'<dt>Tendencia</dt><dd>{mu_sym} &nbsp;<span class="tag {cls}">{txt}</span></dd>'
+        f'<dt>Varianza</dt><dd>Vₜ es inobservable: sus parámetros se obtienen por calibración.</dd>'
+        f'</dl>', unsafe_allow_html=True)
 
 if model_key in ("hull_white", "nelson") and rho > 0:
     st.warning("Con ρ > 0 en este modelo el proceso puede ser solo una martingala *local*: "
@@ -310,7 +317,7 @@ stats([
 tab_paths, tab_dist, tab_guide = st.tabs(["Trayectorias", "Distribución y teoría", "Guía"])
 
 with tab_paths:
-    ptitle("Precio Xₜ")
+    ptitle("Precio Xₜ", f"{n_show} de {n_paths:,} trayectorias · T = {T:g} años")
     line_chart("precio", X, x_mean, x_sd, th_mean=th_x,
                ref_mean=None if ref is None else ref["x_mean"], ref_sd=None if ref is None else ref["x_sd"],
                ytitle="X_t", fmt=",.2f", height=420)
@@ -320,7 +327,7 @@ with tab_paths:
     has_mu_panel = trend != "const"
     cols = st.columns(2, gap="large") if has_mu_panel else [st.container()]
     with cols[0]:
-        ptitle("Varianza Vₜ")
+        ptitle("Varianza Vₜ", spec.name)
         line_chart("varianza", V, v_mean, v_sd,
                    th_mean=None if th_v is None else th_v[0], th_sd=None if th_v is None else np.sqrt(th_v[1]),
                    ref_mean=None if ref is None else ref["v_mean"], ref_sd=None if ref is None else ref["v_sd"],
@@ -397,7 +404,7 @@ with tab_dist:
         pdf_fn = (lambda g: theory_V_pdf(cfg, t_sel, g)) if th_v is not None else None
         hist_chart(vs, "V", float(vs.mean()), None if th_v is None else float(th_v[0][k]), pdf_fn)
 
-    ptitle("Teoría frente a simulación")
+    ptitle("Teoría frente a simulación", f"t = {t_sel:.2f}")
     st.write("")
 
     def se_std(a):

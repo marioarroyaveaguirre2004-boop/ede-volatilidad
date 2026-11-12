@@ -35,8 +35,8 @@ def test_all_combinations():
     at = fresh()
     for model, drift, trend in itertools.product(MODELS, ("usual", "mr"), ("const", "periodic", "stoch")):
         at.pills(key="model").set_value(model)
-        at.radio(key="drift").set_value(drift)
-        at.radio(key="trend").set_value(trend)
+        at.segmented_control(key="drift").set_value(drift)
+        at.segmented_control(key="trend").set_value(trend)
         at.run()
         assert not at.exception, (model, drift, trend, [e.value for e in at.exception])
 
@@ -57,8 +57,8 @@ def test_extreme_sliders():
 
 def test_changing_x0_in_mean_reversion():
     at = fresh()
-    at.radio(key="drift").set_value("mr")
-    at.radio(key="trend").set_value("periodic")
+    at.segmented_control(key="drift").set_value("mr")
+    at.segmented_control(key="trend").set_value("periodic")
     at.run()
     at.slider(key="x0").set_value(500.0)   # los rangos de μ cambian con X₀
     at.run()
