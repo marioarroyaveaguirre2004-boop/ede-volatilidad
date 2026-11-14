@@ -17,7 +17,7 @@ streamlit run app.py
 
 | | |
 |---|---|
-| Panel de control | modelo, deriva usual / reversión, tipo de μ, κ, θ, σ, η, ρ, V₀, X₀, T, nº de trayectorias; sliders o cajas numéricas |
+| Panel de control | modelo, deriva usual / reversión, tipo de μ, κ, θ, σ, η, ρ, V₀, X₀, T, nº de trayectorias; sliders para los parámetros que se exploran en vivo (σ, θ, κ, η, ρ, α) y cajas numéricas para los que se fijan una vez |
 | Tendencia por fórmula | μ(t) escrita a mano (`0.05 + 0.3*sin(2*pi*t)`) con un diccionario de funciones seguro (`formula.py`) |
 | Comparar | dos modelos con el mismo ruido browniano, lado a lado |
 | Animación | botón ▶ para ver las trayectorias avanzar desde t = 0 |

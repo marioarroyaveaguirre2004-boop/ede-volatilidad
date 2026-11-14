@@ -16,7 +16,7 @@ from models import (
     theory_V, theory_V_pdf, theory_X_mean,
 )
 from formula import FormulaError, compile_formula, help_table
-from ui import PLOT_CONFIG, brand, inject_css, palette, ptitle, section, slider, stats, style
+from ui import PLOT_CONFIG, brand, inject_css, number, palette, ptitle, section, slider, stats, style
 
 st.set_page_config(page_title="Laboratorio de volatilidad estocástica",
                    page_icon="📈", layout="wide")
@@ -46,7 +46,7 @@ def trend_controls(drift: str, trend: str, x0: float) -> dict:
     tag = f"{drift}_{trend}" + (f"_{x0:g}" if mr else "")   # clave nueva si cambia X₀ (cambian los rangos)
 
     def sl(label, lo, hi, default, step, name, help=None):
-        return slider(label, lo, hi, default, step, key=f"{tag}_{name}", help=help)
+        return number(label, lo, hi, default, step, key=f"{tag}_{name}", help=help)
 
     per = ("1 año = ciclo estacional (viento, calor, agua…).",)
     if trend == "custom":
@@ -103,8 +103,6 @@ if "seed" not in st.session_state:
 
 with st.sidebar:
     brand()
-    st.segmented_control("Controles", ["slider", "box"], key="ctrl", default="slider", label_visibility="collapsed",
-                         width="stretch", format_func=lambda k: "Sliders" if k == "slider" else "Cajas numéricas")
     section("Modelo de volatilidad", first=True)
     model_key = st.pills("Modelo", list(MODELS), key="model", default="hull_white",
                          format_func=lambda k: MODELS[k].name, label_visibility="collapsed",
@@ -119,7 +117,7 @@ with st.sidebar:
     if drift == "mr":
         alpha = slider(r"$\alpha$ — velocidad de reversión", 0.1, 15.0, 3.0, 0.1, key="alpha",
                        help="Con α grande, X_t pega rápido a μ_t.")
-    x0 = slider(r"$X_0$ — valor inicial", 10.0, 1000.0, 100.0, 10.0, key="x0")
+    x0 = number(r"$X_0$ — valor inicial", 1.0, 100000.0, 100.0, 10.0, key="x0")
 
     section('Tendencia <span class="nt">μ</span>')
     trend = st.segmented_control("Tendencia", ["const", "periodic", "stoch", "custom"], key="trend", default="const",
@@ -129,7 +127,7 @@ with st.sidebar:
     tp = trend_controls(drift, trend, x0)
 
     section(f"Varianza · {spec.name}")
-    v0 = slider(r"$V_0$ — varianza inicial", 0.001, 0.50, 0.04, 0.001, key="v0",
+    v0 = number(r"$V_0$ — varianza inicial", 0.0001, 5.0, 0.04, 0.001, key="v0",
                 help="0.04 ⇒ volatilidad inicial √V₀ = 20 %.")
     vp = {p.key: slider(p.label, p.lo, p.hi, p.default, p.step, key=f"{model_key}_{p.key}", help=p.help or None)
           for p in spec.params}
@@ -155,9 +153,9 @@ with st.sidebar:
 
     section("Simulación")
     with st.expander("Horizonte, pasos, trayectorias y semilla", expanded=False):
-        T = slider("Horizonte $T$ (años)", 0.25, 5.0, 1.0, 0.25, key="T")
+        T = number("Horizonte $T$ (años)", 0.1, 30.0, 1.0, 0.25, key="T")
         spy = st.select_slider("Pasos por año", [52, 126, 252, 504], 252, key="spy")
-        n_paths = slider("Trayectorias simuladas", 100, 2000, 500, 100, key="n_paths")
+        n_paths = number("Trayectorias simuladas", 50, 5000, 500, 100, key="n_paths")
         n_show = slider("Trayectorias dibujadas", 1, 100, 40, 1, key="n_show")
         c1, c2 = st.columns([1.4, 1], vertical_alignment="bottom")
         c1.number_input("Semilla", 0, 10**6, step=1, key="seed")

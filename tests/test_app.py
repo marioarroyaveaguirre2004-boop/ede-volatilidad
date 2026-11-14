@@ -48,9 +48,9 @@ def test_extreme_sliders():
     at.slider(key="heston_sigma").set_value(1.5)
     at.slider(key="heston_kappa").set_value(0.1)
     at.slider(key="rho_heston").set_value(0.99)
-    at.slider(key="T").set_value(5.0)
+    at.number_input(key="T").set_value(5.0)
     at.select_slider(key="spy").set_value(504)
-    at.slider(key="n_paths").set_value(2000)
+    at.number_input(key="n_paths").set_value(2000.0)
     at.run()
     assert not at.exception, [e.value for e in at.exception]
 
@@ -60,7 +60,7 @@ def test_changing_x0_in_mean_reversion():
     at.segmented_control(key="drift").set_value("mr")
     at.segmented_control(key="trend").set_value("periodic")
     at.run()
-    at.slider(key="x0").set_value(500.0)   # los rangos de μ cambian con X₀
+    at.number_input(key="x0").set_value(500.0)   # los rangos de μ cambian con X₀
     at.run()
     assert not at.exception, [e.value for e in at.exception]
 
@@ -113,13 +113,10 @@ def test_formula_and_boxes():
     assert not at.exception
     at.text_input(key="usual_custom_expr").set_value("foo(t) +").run()     # fórmula inválida: aviso, no excepción
     assert not at.exception and any("Fórmula no válida" in e.value for e in at.error)
-    # cajas numéricas: el valor del slider se conserva al cambiar de control
-    at.slider(key="x0").set_value(250.0).run()
-    at.segmented_control(key="ctrl").set_value("box").run()
+    at.number_input(key="x0").set_value(2500.0).run()
+    at.number_input(key="T").set_value(3.0).run()
+    at.number_input(key="n_paths").set_value(1200.0).run()
     assert not at.exception, [e.value for e in at.exception]
-    assert abs(at.number_input(key="x0").value - 250.0) < 1e-9
-    at.number_input(key="x0").set_value(300.0).run()
-    assert not at.exception
 
 
 if __name__ == "__main__":

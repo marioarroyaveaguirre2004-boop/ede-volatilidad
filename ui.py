@@ -195,22 +195,26 @@ def _decimals(step: float) -> int:
 
 
 def slider(label: str, lo: float, hi: float, default: float, step: float, key: str,
-           help: str | None = None, fmt: str | None = None) -> float:
-    """Control numérico: slider con el valor alineado a la derecha, o caja numérica (según «Controles»)."""
+           help: str | None = None, fmt: str | None = None, box: bool = False) -> float:
+    """Control numérico: slider con el valor alineado a la derecha (box=False) o caja numérica (box=True)."""
     lo, hi, default, step = float(lo), float(hi), float(default), float(step)
     cur = float(st.session_state.get(key, default))
     cur = min(max(cur, lo), hi)
     nd = _decimals(step) if fmt is None else None
     txt = (fmt % cur) if fmt else (f"{cur:,.{nd}f}")
-    box = st.session_state.get("ctrl") == "box"
     with st.container(key=f"sl_{key}"):
         with st.container(horizontal=True, horizontal_alignment="distribute", vertical_alignment="center", gap=None):
             st.markdown(label, width="content")
             if box:
                 return float(st.number_input(label, lo, hi, cur, step, key=key, label_visibility="collapsed",
-                                             format=fmt or f"%.{nd}f", width=120, help=None))
+                                             format=fmt or f"%.{nd}f", width=120))
             st.markdown(f'<span class="val" title="{help or ""}">{txt}</span>', unsafe_allow_html=True, width="content")
         return st.slider(label, lo, hi, cur, step, key=key, label_visibility="collapsed")
+
+
+def number(label, lo, hi, default, step, key, help=None, fmt=None) -> float:
+    """Caja numérica con la misma fila etiqueta + control que slider()."""
+    return slider(label, lo, hi, default, step, key, help, fmt, box=True)
 
 
 def stats(items: list[tuple[str, str, str | None]]) -> None:
