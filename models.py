@@ -157,7 +157,7 @@ class SimConfig:
     steps_per_year: int = 252
     drift: str = "usual"                        # "usual" | "mr"
     alpha: float = 3.0                          # velocidad de reversión de X (solo drift="mr")
-    trend: str = "const"                        # "const" | "periodic" | "stoch"
+    trend: str = "const"                        # "const" | "periodic" | "stoch" | "custom"
     tp: dict = field(default_factory=dict)      # parámetros de μ
 
     @property
@@ -193,12 +193,14 @@ def mu_det(cfg: SimConfig, t: np.ndarray) -> np.ndarray:
         return np.full_like(t, tp["mu"], dtype=float)
     if cfg.trend == "periodic":
         return tp["mu"] + tp["amp"] * np.sin(2 * np.pi * t / tp["period"] + tp["phase"])
+    if cfg.trend == "custom":
+        return tp["f"](t)
     raise ValueError("mu_det solo aplica a tendencias deterministas")
 
 
 def mu_mean(cfg: SimConfig, t: np.ndarray) -> np.ndarray:
     """E[μ_t] para cualquiera de las tres tendencias."""
-    if cfg.trend in ("const", "periodic"):
+    if cfg.trend in ("const", "periodic", "custom"):
         return mu_det(cfg, t)
     tp = cfg.tp
     return tp["m"] + (tp["mu0"] - tp["m"]) * np.exp(-tp["a"] * t)
@@ -405,6 +407,10 @@ def theory_X_mean(cfg: SimConfig, t: np.ndarray) -> np.ndarray:
     if cfg.trend == "periodic":
         P, A, ph = tp["period"], tp["amp"], tp["phase"]
         integral = tp["mu"] * t + A * P / (2 * np.pi) * (np.cos(ph) - np.cos(2 * np.pi * t / P + ph))
+        return cfg.x0 * np.exp(integral)
+    if cfg.trend == "custom":          # ∫μ por trapecios sobre la malla
+        mu = tp["f"](t)
+        integral = np.concatenate([[0.0], np.cumsum(0.5 * (mu[1:] + mu[:-1]) * np.diff(t))])
         return cfg.x0 * np.exp(integral)
     a, s, m0, mm = tp["a"], tp["s"], tp["mu0"], tp["m"]
     M = mm * t + (m0 - mm) * (1 - np.exp(-a * t)) / a

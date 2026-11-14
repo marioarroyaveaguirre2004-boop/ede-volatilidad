@@ -33,7 +33,7 @@ def test_default_runs():
 
 def test_all_combinations():
     at = fresh()
-    for model, drift, trend in itertools.product(MODELS, ("usual", "mr"), ("const", "periodic", "stoch")):
+    for model, drift, trend in itertools.product(MODELS, ("usual", "mr"), ("const", "periodic", "stoch", "custom")):
         at.pills(key="model").set_value(model)
         at.segmented_control(key="drift").set_value(drift)
         at.segmented_control(key="trend").set_value(trend)
@@ -102,6 +102,24 @@ def test_compare_and_animate():
     at.pills(key="model").set_value("scott")
     at.run()
     assert not at.exception, [e.value for e in at.exception]
+
+
+def test_formula_and_boxes():
+    at = fresh()
+    at.segmented_control(key="trend").set_value("custom")
+    at.run()
+    assert not at.exception, [e.value for e in at.exception]
+    at.text_input(key="usual_custom_expr").set_value("0.08*exp(-2*t) + 0.1*step(t-0.5)").run()
+    assert not at.exception
+    at.text_input(key="usual_custom_expr").set_value("foo(t) +").run()     # fórmula inválida: aviso, no excepción
+    assert not at.exception and any("Fórmula no válida" in e.value for e in at.error)
+    # cajas numéricas: el valor del slider se conserva al cambiar de control
+    at.slider(key="x0").set_value(250.0).run()
+    at.segmented_control(key="ctrl").set_value("box").run()
+    assert not at.exception, [e.value for e in at.exception]
+    assert abs(at.number_input(key="x0").value - 250.0) < 1e-9
+    at.number_input(key="x0").set_value(300.0).run()
+    assert not at.exception
 
 
 if __name__ == "__main__":

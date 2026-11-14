@@ -17,7 +17,10 @@ streamlit run app.py
 
 | | |
 |---|---|
-| Panel de control | modelo, deriva usual / reversión, tipo de μ, κ, θ, σ, η, ρ, V₀, X₀, T, nº de trayectorias |
+| Panel de control | modelo, deriva usual / reversión, tipo de μ, κ, θ, σ, η, ρ, V₀, X₀, T, nº de trayectorias; sliders o cajas numéricas |
+| Tendencia por fórmula | μ(t) escrita a mano (`0.05 + 0.3*sin(2*pi*t)`) con un diccionario de funciones seguro (`formula.py`) |
+| Comparar | dos modelos con el mismo ruido browniano, lado a lado |
+| Animación | botón ▶ para ver las trayectorias avanzar desde t = 0 |
 | Ruido congelado | misma semilla al mover un parámetro: las trayectorias se deforman, no cambian |
 | Ecuaciones | el sistema completo en LaTeX, según las opciones elegidas |
 | Banda ±2σ | media simulada ± 2 desviaciones, contra la media teórica |
@@ -45,6 +48,8 @@ python tests/test_app.py    # recorre la interfaz: 5 modelos × 2 derivas × 3 t
 ```
 app.py          interfaz (Streamlit + Plotly)
 models.py       motor numérico: modelos, simulación, teoría (sin dependencias de Streamlit)
+formula.py      intérprete seguro de μ(t) escrita por el usuario
+ui.py           tema visual: paleta, CSS, helpers de interfaz
 validate.py     validación Monte Carlo
 tests/          pruebas de la interfaz
 ```

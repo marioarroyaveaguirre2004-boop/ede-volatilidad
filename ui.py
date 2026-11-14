@@ -113,6 +113,8 @@ hr {{ margin: .6rem 0 .9rem; border-color: var(--hair) !important; }}
   border: 2px solid var(--surface) !important;
 }}
 [data-testid="stSlider"] [data-testid="stTickBar"] {{ margin-top: .1rem; }}
+[class*="st-key-sl_"] [data-testid="stNumberInput"] input {{ font-variant-numeric: tabular-nums; font-weight: 600; font-size: .86rem; text-align: right; padding: .25rem .5rem; }}
+[class*="st-key-sl_"] [data-testid="stNumberInput"] {{ margin-bottom: .35rem; }}
 /* ── chips (pills) ─────────────────────────────────────────────────────── */
 [data-testid="stPills"] button {{ font-size: .82rem; padding: .28rem .7rem; border-radius: 999px; }}
 /* ── radios más compactos ───────────────────────────────────────────────── */
@@ -194,17 +196,21 @@ def _decimals(step: float) -> int:
 
 def slider(label: str, lo: float, hi: float, default: float, step: float, key: str,
            help: str | None = None, fmt: str | None = None) -> float:
-    """Slider con la etiqueta a la izquierda y el valor actual alineado a la derecha."""
+    """Control numérico: slider con el valor alineado a la derecha, o caja numérica (según «Controles»)."""
     lo, hi, default, step = float(lo), float(hi), float(default), float(step)
     cur = float(st.session_state.get(key, default))
     cur = min(max(cur, lo), hi)
     nd = _decimals(step) if fmt is None else None
     txt = (fmt % cur) if fmt else (f"{cur:,.{nd}f}")
+    box = st.session_state.get("ctrl") == "box"
     with st.container(key=f"sl_{key}"):
-        with st.container(horizontal=True, horizontal_alignment="distribute", vertical_alignment="bottom", gap=None):
+        with st.container(horizontal=True, horizontal_alignment="distribute", vertical_alignment="center", gap=None):
             st.markdown(label, width="content")
+            if box:
+                return float(st.number_input(label, lo, hi, cur, step, key=key, label_visibility="collapsed",
+                                             format=fmt or f"%.{nd}f", width=120, help=None))
             st.markdown(f'<span class="val" title="{help or ""}">{txt}</span>', unsafe_allow_html=True, width="content")
-        return st.slider(label, lo, hi, default, step, key=key, label_visibility="collapsed")
+        return st.slider(label, lo, hi, cur, step, key=key, label_visibility="collapsed")
 
 
 def stats(items: list[tuple[str, str, str | None]]) -> None:

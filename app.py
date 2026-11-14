@@ -15,6 +15,7 @@ from models import (
     MODELS, SimConfig, make_noise, mu_det, mu_mean, mu_std, simulate,
     theory_V, theory_V_pdf, theory_X_mean,
 )
+from formula import FormulaError, compile_formula, help_table
 from ui import PLOT_CONFIG, brand, inject_css, palette, ptitle, section, slider, stats, style
 
 st.set_page_config(page_title="Laboratorio de volatilidad estocástica",
@@ -22,11 +23,12 @@ st.set_page_config(page_title="Laboratorio de volatilidad estocástica",
 P = palette()
 inject_css(P)
 
-TREND_NAME = {"const": r"Constante $\mu$", "periodic": r"Periódica $\mu(t)$", "stoch": r"Estocástica $\mu_t$"}
+TREND_NAME = {"const": r"Constante $\mu$", "periodic": r"Periódica $\mu(t)$", "stoch": r"Estocástica $\mu_t$", "custom": r"Fórmula $f(t)$"}
 TREND_TAG = {
     "const": ("good", "observable · estimable ✓"),
     "periodic": ("info", "inobservable · sí estimable ✓"),
     "stoch": ("warn", "inobservable · no estimable (?)"),
+    "custom": ("info", "inobservable · sí estimable ✓"),
 }
 
 
@@ -47,6 +49,20 @@ def trend_controls(drift: str, trend: str, x0: float) -> dict:
         return slider(label, lo, hi, default, step, key=f"{tag}_{name}", help=help)
 
     per = ("1 año = ciclo estacional (viento, calor, agua…).",)
+    if trend == "custom":
+        default = f"{1.1 * x0:g} + {0.3 * x0:g}*sin(2*pi*t)" if mr else "0.05 + 0.3*sin(2*pi*t)"
+        expr = st.text_input("μ(t) =", default, key=f"{tag}_expr", placeholder="p. ej. 0.05 + 0.3*sin(2*pi*t)",
+                             help="Escribe μ como función de t (en años). Pulsa Enter para aplicar.")
+        try:
+            f = compile_formula(expr)
+            ok = True
+        except FormulaError as e:
+            st.error(f"Fórmula no válida: {e}", icon="⚠️")
+            f, ok = compile_formula(default), False
+        with st.expander("Diccionario de funciones", expanded=False):
+            st.markdown(help_table())
+            st.caption("Ejemplos: `0.08*exp(-2*t)` · `0.05 + 0.1*step(t-0.5)` · `0.02*t + 0.2*cos(4*pi*t)`")
+        return {"f": f, "expr": expr if ok else default}
     if mr:
         lo, hi, st_ = 0.2 * x0, 3.0 * x0, x0 / 100
         lvl = "Nivel (en unidades de X) hacia el que X_t es atraído."
@@ -87,6 +103,8 @@ if "seed" not in st.session_state:
 
 with st.sidebar:
     brand()
+    st.segmented_control("Controles", ["slider", "box"], key="ctrl", default="slider", label_visibility="collapsed",
+                         width="stretch", format_func=lambda k: "Sliders" if k == "slider" else "Cajas numéricas")
     section("Modelo de volatilidad", first=True)
     model_key = st.pills("Modelo", list(MODELS), key="model", default="hull_white",
                          format_func=lambda k: MODELS[k].name, label_visibility="collapsed",
@@ -104,9 +122,10 @@ with st.sidebar:
     x0 = slider(r"$X_0$ — valor inicial", 10.0, 1000.0, 100.0, 10.0, key="x0")
 
     section('Tendencia <span class="nt">μ</span>')
-    trend = st.segmented_control("Tendencia", ["const", "periodic", "stoch"], key="trend", default="const",
+    trend = st.segmented_control("Tendencia", ["const", "periodic", "stoch", "custom"], key="trend", default="const",
                                  label_visibility="collapsed", width="stretch",
-                                 format_func=lambda k: {"const": "Constante", "periodic": "Periódica", "stoch": "Estocástica"}[k]) or "const"
+                                 format_func=lambda k: {"const": "Constante", "periodic": "Periódica",
+                                                        "stoch": "Estocástica", "custom": "Fórmula"}[k]) or "const"
     tp = trend_controls(drift, trend, x0)
 
     section(f"Varianza · {spec.name}")
@@ -338,10 +357,10 @@ def line_chart(name: str, Y: np.ndarray, mean: np.ndarray, sd: np.ndarray,
 hl, hr = st.columns([3, 2], vertical_alignment="center")
 hl.markdown('<p class="eyebrow">Ecuaciones diferenciales estocásticas</p>'
             '<p class="hdr-title">Laboratorio de volatilidad estocástica</p>'
-            '<p class="hdr-sub">Cinco modelos de volatilidad, dos derivas y tres tendencias, con simulación y teoría lado a lado.</p>',
+            '<p class="hdr-sub">Cinco modelos de volatilidad, dos derivas y cuatro tendencias (incluida una fórmula libre), con simulación y teoría lado a lado.</p>',
             unsafe_allow_html=True)
 drift_txt = "Deriva usual" if drift == "usual" else "Reversión a la media"
-trend_txt = {"const": "Tendencia constante", "periodic": "Tendencia periódica", "stoch": "Tendencia estocástica"}[trend]
+trend_txt = {"const": "Tendencia constante", "periodic": "Tendencia periódica", "stoch": "Tendencia estocástica", "custom": "Tendencia por fórmula"}[trend]
 hr.markdown(f'<div class="chips"><span class="chip on">{spec.name}</span>'
             f'<span class="chip">{drift_txt}</span><span class="chip">{trend_txt}</span>'
             f'<span class="chip">ρ = {rho:g}</span>'
@@ -358,6 +377,7 @@ mu_eq = {
     "const": r"\mu_t &\equiv \mu",
     "periodic": r"\mu_t &= \mu(t) = \bar\mu + A\,\sin\!\Big(\tfrac{2\pi t}{P}+\varphi\Big)",
     "stoch": r"d\mu_t &= a\,(m-\mu_t)\,dt + s\,dW^{(3)}_t",
+    "custom": r"\mu_t &= f(t)\quad\text{(fórmula del usuario)}",
 }[trend]
 corr_eq = r"d\langle B^{(1)},B^{(2)}\rangle_t &= \rho\,dt"
 
@@ -365,7 +385,7 @@ with st.container(key="eq_card"):
     left, right = st.columns([3, 2], vertical_alignment="center")
     left.latex(r"\begin{aligned}" + r" \\[2pt] ".join([x_eq, v_eq, mu_eq, corr_eq]) + r"\end{aligned}")
     cls, txt = TREND_TAG[trend]
-    mu_sym = {"const": "μ", "periodic": "μ(t)", "stoch": "μₜ"}[trend]
+    mu_sym = f"<code>{tp['expr']}</code>" if trend == "custom" else {"const": "μ", "periodic": "μ(t)", "stoch": "μₜ"}[trend]
     right.markdown(
         f'<dl class="dl">'
         f'<dt>Modelo</dt><dd><b>{spec.name}.</b> {spec.summary}</dd>'
@@ -455,8 +475,8 @@ with tab_paths:
                 st.caption("Scott no tiene momentos de $V_t$ en forma cerrada: solo se muestra la simulación.")
     if has_mu_panel:
         with cols[1]:
-            if trend == "periodic":
-                ptitle("Tendencia μ(t)")
+            if trend in ("periodic", "custom"):
+                ptitle("Tendencia μ(t)", tp["expr"] if trend == "custom" else "")
                 mu_curve = mu_det(cfg, t)
                 fig = go.Figure(go.Scatter(x=t, y=mu_curve, mode="lines", name="μ(t)",
                                            line=dict(color=P["orange"], width=2.4), hovertemplate="%{y:.3f}"))
