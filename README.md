@@ -41,8 +41,7 @@ python tests/test_app.py    # recorre la interfaz: 5 modelos × 2 derivas × 3 t
    `requirements.txt`, `.streamlit/`, …).
 2. Entra a <https://share.streamlit.io> e inicia sesión con GitHub.
 3. **Create app → Deploy a public app from GitHub**: elige el repo, rama `main`, archivo principal `app.py`.
-4. **Deploy**. En 1–2 minutos tendrás una URL pública para compartir con el profesor.
-
+4. **Deploy**. En 1–2 minutos tendrás una URL pública.
 ## Estructura
 
 ```
