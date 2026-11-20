@@ -104,10 +104,10 @@ if "seed" not in st.session_state:
 with st.sidebar:
     brand()
     section("Modelo de volatilidad", first=True)
-    model_key = st.pills("Modelo", list(MODELS), key="model", default="hull_white",
+    model_key = st.pills("Modelo", list(MODELS), key="model", default=None,
                          format_func=lambda k: MODELS[k].name, label_visibility="collapsed",
-                         width="stretch") or "hull_white"
-    spec = MODELS[model_key]
+                         width="stretch")
+    spec = MODELS[model_key] if model_key else None
 
     section("Deriva de la variable observada")
     drift = st.segmented_control("Deriva", ["usual", "mr"], key="drift", default="usual",
@@ -115,31 +115,34 @@ with st.sidebar:
                                  format_func=lambda k: "Usual" if k == "usual" else "Reversión a la media") or "usual"
     alpha = 3.0
     if drift == "mr":
-        alpha = slider(r"$\alpha$ — velocidad de reversión", 0.1, 15.0, 3.0, 0.1, key="alpha",
+        alpha = number(r"$\alpha$ — velocidad de reversión", 0.1, 15.0, 3.0, 0.1, key="alpha",
                        help="Con α grande, X_t pega rápido a μ_t.")
     x0 = number(r"$X_0$ — valor inicial", 1.0, 100000.0, 100.0, 10.0, key="x0")
 
-    section('Tendencia <span class="nt">μ</span>')
-    trend = st.segmented_control("Tendencia", ["const", "periodic", "stoch", "custom"], key="trend", default="const",
+    section('Tendencia <span class="nt">μₜ</span>')
+    trend = st.segmented_control("Tendencia", ["const", "periodic", "stoch", "custom"], key="trend", default=None,
                                  label_visibility="collapsed", width="stretch",
                                  format_func=lambda k: {"const": "Constante", "periodic": "Periódica",
-                                                        "stoch": "Estocástica", "custom": "Fórmula"}[k]) or "const"
-    tp = trend_controls(drift, trend, x0)
+                                                        "stoch": "Estocástica", "custom": "Fórmula"}[k])
+    tp = trend_controls(drift, trend, x0) if trend else {}
 
-    section(f"Varianza · {spec.name}")
+    section(f"Varianza · {spec.name}" if spec else "Varianza")
     v0 = number(r"$V_0$ — varianza inicial", 0.0001, 5.0, 0.04, 0.001, key="v0",
                 help="0.04 ⇒ volatilidad inicial √V₀ = 20 %.")
-    vp = {p.key: slider(p.label, p.lo, p.hi, p.default, p.step, key=f"{model_key}_{p.key}", help=p.help or None)
-          for p in spec.params}
-    rho = slider(r"$\rho$ — correlación $B^{(1)}$, $B^{(2)}$", -0.99, 0.99,
-                 0.0 if model_key == "hull_white" else -0.5, 0.01, key=f"rho_{model_key}",
-                 help="ρ < 0: efecto apalancamiento (X cae cuando sube la volatilidad).")
+    vp, rho, compare, model_b, vp_b = {}, 0.0, False, None, {}
+    if spec is None:
+        st.caption("Elige un modelo para ver sus parámetros.")
+    else:
+        vp = {p.key: slider(p.label, p.lo, p.hi, p.default, p.step, key=f"{model_key}_{p.key}", help=p.help or None)
+              for p in spec.params}
+        rho = slider(r"$\rho$ — correlación $B^{(1)}$, $B^{(2)}$", -0.99, 0.99,
+                     0.0 if model_key == "hull_white" else -0.5, 0.01, key=f"rho_{model_key}",
+                     help="ρ < 0: efecto apalancamiento (X cae cuando sube la volatilidad).")
 
-    section("Comparar")
-    compare = st.toggle("Comparar con otro modelo", False, key="compare",
-                        help="Simula un segundo modelo con el mismo ruido browniano, la misma deriva, "
-                             "tendencia, V₀ y ρ. Las diferencias se deben solo a la ecuación de Vₜ.")
-    model_b, vp_b = None, {}
+        section("Comparar")
+        compare = st.toggle("Comparar con otro modelo", False, key="compare",
+                            help="Simula un segundo modelo con el mismo ruido browniano, la misma deriva, "
+                                 "tendencia, V₀ y ρ. Las diferencias se deben solo a la ecuación de Vₜ.")
     if compare:
         others = [k for k in MODELS if k != model_key]
         model_b = st.pills("Modelo B", others, key="model_b", default=others[0], label_visibility="collapsed",
@@ -181,45 +184,47 @@ with st.sidebar:
 
 seed = int(st.session_state["seed"]) if frozen else int(np.random.randint(0, 10**6))
 n_paths, n_show = int(n_paths), int(n_show)
+ready = model_key is not None and trend is not None   # sin modelo o sin tendencia no se simula
 
 # ═════════════════════════════════════════════════════════════════════════════
 #  Simulación
 # ═════════════════════════════════════════════════════════════════════════════
-cfg = SimConfig(model=model_key, vp=vp, v0=v0, x0=x0, rho=rho, T=T, steps_per_year=spy,
-                drift=drift, alpha=alpha, trend=trend, tp=tp)
-n_steps = cfg.n_steps
-Z = get_noise(seed, n_paths, n_steps)
-res = simulate(cfg, Z)
-t, X, V, Mu = res.t, res.X, res.V, res.Mu
-dt = T / n_steps
+if ready:
+    cfg = SimConfig(model=model_key, vp=vp, v0=v0, x0=x0, rho=rho, T=T, steps_per_year=spy,
+                    drift=drift, alpha=alpha, trend=trend, tp=tp)
+    n_steps = cfg.n_steps
+    Z = get_noise(seed, n_paths, n_steps)
+    res = simulate(cfg, Z)
+    t, X, V, Mu = res.t, res.X, res.V, res.Mu
+    dt = T / n_steps
 
-x_mean, x_sd = X.mean(axis=1), X.std(axis=1)
-v_mean, v_sd = V.mean(axis=1), V.std(axis=1)
-th_x = theory_X_mean(cfg, t)
-th_v = theory_V(cfg, t)
+    x_mean, x_sd = X.mean(axis=1), X.std(axis=1)
+    v_mean, v_sd = V.mean(axis=1), V.std(axis=1)
+    th_x = theory_X_mean(cfg, t)
+    th_v = theory_V(cfg, t)
 
-if compare:
-    cfg_b = SimConfig(model=model_b, vp=vp_b, v0=v0, x0=x0, rho=rho, T=T, steps_per_year=spy,
-                      drift=drift, alpha=alpha, trend=trend, tp=tp)
-    res_b = simulate(cfg_b, Z)
-    X_b, V_b = res_b.X, res_b.V
-    xb_mean, xb_sd = X_b.mean(axis=1), X_b.std(axis=1)
-    vb_mean, vb_sd = V_b.mean(axis=1), V_b.std(axis=1)
-    th_x_b, th_v_b = theory_X_mean(cfg_b, t), theory_V(cfg_b, t)
+    if compare:
+        cfg_b = SimConfig(model=model_b, vp=vp_b, v0=v0, x0=x0, rho=rho, T=T, steps_per_year=spy,
+                          drift=drift, alpha=alpha, trend=trend, tp=tp)
+        res_b = simulate(cfg_b, Z)
+        X_b, V_b = res_b.X, res_b.V
+        xb_mean, xb_sd = X_b.mean(axis=1), X_b.std(axis=1)
+        vb_mean, vb_sd = V_b.mean(axis=1), V_b.std(axis=1)
+        th_x_b, th_v_b = theory_X_mean(cfg_b, t), theory_V(cfg_b, t)
 
-if not lock:
-    st.session_state.pop("ylock", None)
-ylock = st.session_state.setdefault("ylock", {}) if lock else None
+    if not lock:
+        st.session_state.pop("ylock", None)
+    ylock = st.session_state.setdefault("ylock", {}) if lock else None
 
-if unpin:
-    st.session_state.pop("ref", None)
-if pin:
-    st.session_state["ref"] = dict(
-        label=f"{spec.name} · ρ = {rho:g} · " + " · ".join(f"{k} = {v:g}" for k, v in vp.items()),
-        t=t.copy(), x_mean=x_mean.copy(), x_sd=x_sd.copy(), v_mean=v_mean.copy(), v_sd=v_sd.copy(), T=T)
-ref = st.session_state.get("ref")
-if ref is not None and abs(ref["T"] - T) > 1e-9:
-    ref = None   # otro horizonte: la referencia ya no es comparable
+    if unpin:
+        st.session_state.pop("ref", None)
+    if pin:
+        st.session_state["ref"] = dict(
+            label=f"{spec.name} · ρ = {rho:g} · " + " · ".join(f"{k} = {v:g}" for k, v in vp.items()),
+            t=t.copy(), x_mean=x_mean.copy(), x_sd=x_sd.copy(), v_mean=v_mean.copy(), v_sd=v_sd.copy(), T=T)
+    ref = st.session_state.get("ref")
+    if ref is not None and abs(ref["T"] - T) > 1e-9:
+        ref = None   # otro horizonte: la referencia ya no es comparable
 
 # ═════════════════════════════════════════════════════════════════════════════
 #  Gráficas
@@ -228,7 +233,7 @@ def decimate(n: int, max_pts: int = 400) -> np.ndarray:
     return np.unique(np.linspace(0, n, min(n + 1, max_pts)).astype(int))
 
 
-IDX = decimate(n_steps)
+IDX = decimate(n_steps) if ready else None
 
 
 def auto_range(Y, mean, sd, floor0=False, paths=True):
@@ -358,36 +363,52 @@ hl.markdown('<p class="eyebrow">Ecuaciones diferenciales estocásticas</p>'
             '<p class="hdr-sub">Cinco modelos de volatilidad, dos derivas y cuatro tendencias (incluida una fórmula libre), con simulación y teoría lado a lado.</p>',
             unsafe_allow_html=True)
 drift_txt = "Deriva usual" if drift == "usual" else "Reversión a la media"
-trend_txt = {"const": "Tendencia constante", "periodic": "Tendencia periódica", "stoch": "Tendencia estocástica", "custom": "Tendencia por fórmula"}[trend]
-hr.markdown(f'<div class="chips"><span class="chip on">{spec.name}</span>'
-            f'<span class="chip">{drift_txt}</span><span class="chip">{trend_txt}</span>'
-            f'<span class="chip">ρ = {rho:g}</span>'
+trend_txt = {"const": "Tendencia constante", "periodic": "Tendencia periódica", "stoch": "Tendencia estocástica",
+             "custom": "Tendencia por fórmula", None: "Sin tendencia"}[trend]
+hr.markdown('<div class="chips">'
+            + (f'<span class="chip on">{spec.name}</span>' if spec else '<span class="chip">Sin modelo</span>')
+            + f'<span class="chip">{drift_txt}</span><span class="chip">{trend_txt}</span>'
+            + (f'<span class="chip">ρ = {rho:g}</span>' if spec else "")
             + (f'<span class="chip">vs {MODELS[model_b].name}</span>' if compare else "") + '</div>', unsafe_allow_html=True)
 st.markdown('<div class="hdr-rule"></div>', unsafe_allow_html=True)
 
 # ═════════════════════════════════════════════════════════════════════════════
-#  Ecuaciones
+#  Ecuaciones (genéricas mientras no se elija tendencia / modelo)
 # ═════════════════════════════════════════════════════════════════════════════
-x_eq = (r"dX_t &= \mu_t\,X_t\,dt + \sqrt{V_t}\,X_t\,dB^{(1)}_t" if drift == "usual"
-        else r"dX_t &= \alpha\,(\mu_t - X_t)\,dt + \sqrt{V_t}\,X_t\,dB^{(1)}_t")
-v_eq = spec.v_latex.replace("dV_t =", "dV_t &=", 1)
+if trend is None:
+    x_eq = r"dX_t &= F(t,\mu_t,X_t)\,dt + \sqrt{V_t}\,X_t\,dB^{(1)}_t"
+elif drift == "usual":
+    x_eq = r"dX_t &= \mu_t\,X_t\,dt + \sqrt{V_t}\,X_t\,dB^{(1)}_t"
+else:
+    x_eq = r"dX_t &= \alpha\,(\mu_t - X_t)\,dt + \sqrt{V_t}\,X_t\,dB^{(1)}_t"
+v_eq = (r"dV_t &= a(t,V_t)\,dt + b(t,V_t)\,dB^{(2)}_t" if spec is None
+        else spec.v_latex.replace("dV_t =", "dV_t &=", 1))
 mu_eq = {
     "const": r"\mu_t &\equiv \mu",
     "periodic": r"\mu_t &= \mu(t) = \bar\mu + A\,\sin\!\Big(\tfrac{2\pi t}{P}+\varphi\Big)",
     "stoch": r"d\mu_t &= a\,(m-\mu_t)\,dt + s\,dW^{(3)}_t",
     "custom": r"\mu_t &= f(t)\quad\text{(fórmula del usuario)}",
-}[trend]
+}.get(trend)
 corr_eq = r"d\langle B^{(1)},B^{(2)}\rangle_t &= \rho\,dt"
 
 with st.container(key="eq_card"):
     left, right = st.columns([3, 2], vertical_alignment="center")
-    left.latex(r"\begin{aligned}" + r" \\[2pt] ".join([x_eq, v_eq, mu_eq, corr_eq]) + r"\end{aligned}")
-    cls, txt = TREND_TAG[trend]
-    mu_sym = f"<code>{tp['expr']}</code>" if trend == "custom" else {"const": "μ", "periodic": "μ(t)", "stoch": "μₜ"}[trend]
+    eqs = [x_eq, v_eq] + ([mu_eq] if mu_eq else []) + [corr_eq]
+    left.latex(r"\begin{aligned}" + r" \\[2pt] ".join(eqs) + r"\end{aligned}")
+    if spec is None:
+        model_dd = "<i>Sin seleccionar:</i> elige uno de los cinco modelos para concretar a y b."
+    else:
+        model_dd = f"<b>{spec.name}.</b> {spec.summary}"
+    if trend is None:
+        trend_dd = "<i>Sin seleccionar:</i> elige una tendencia para concretar F."
+    else:
+        cls, txt = TREND_TAG[trend]
+        mu_sym = f"<code>{tp['expr']}</code>" if trend == "custom" else {"const": "μ", "periodic": "μ(t)", "stoch": "μₜ"}[trend]
+        trend_dd = f'{mu_sym} &nbsp;<span class="tag {cls}">{txt}</span>'
     right.markdown(
         f'<dl class="dl">'
-        f'<dt>Modelo</dt><dd><b>{spec.name}.</b> {spec.summary}</dd>'
-        f'<dt>Tendencia</dt><dd>{mu_sym} &nbsp;<span class="tag {cls}">{txt}</span></dd>'
+        f'<dt>Modelo</dt><dd>{model_dd}</dd>'
+        f'<dt>Tendencia</dt><dd>{trend_dd}</dd>'
         f'<dt>Varianza</dt><dd>Vₜ es inobservable: sus parámetros se obtienen por calibración.</dd>'
         f'</dl>', unsafe_allow_html=True)
 
@@ -398,6 +419,10 @@ if model_key == "stein_stein":
     st.caption("En Stein & Stein, $V_t$ es un OU y puede ser negativa; en $X_t$ se usa $\\sqrt{\\max(V_t,0)}$.")
 if model_key == "scott":
     st.caption("En Scott la difusión de $V_t$ se tomó como $\\sigma\\sqrt{V_t}$ — ver la pestaña Guía.")
+
+if not ready:
+    st.info("Elige un modelo de volatilidad y una tendencia μₜ en la barra lateral para simular.", icon="👈")
+    st.stop()
 
 # ═════════════════════════════════════════════════════════════════════════════
 #  Estadísticas
