@@ -1,6 +1,6 @@
 """
 Recorre la interfaz con el framework de pruebas de Streamlit:
-las 5 × 2 × 3 combinaciones modelo × deriva × tendencia, más cambios de
+las 5 × 2 × 4 combinaciones modelo × deriva × tendencia, más cambios de
 parámetros, referencia fijada y ejes fijos. Falla si alguna ejecución lanza excepción.
 
 Uso:  python tests/test_app.py        (o:  pytest tests/)
@@ -26,9 +26,47 @@ def fresh() -> AppTest:
     return at
 
 
+def select(at: AppTest, model: str = "hull_white", trend: str = "const") -> AppTest:
+    at.pills(key="model").set_value(model)
+    at.segmented_control(key="trend").set_value(trend)
+    at.run()
+    assert not at.exception, [e.value for e in at.exception]
+    return at
+
+
+def latex(at: AppTest) -> str:
+    return "".join(l.value for l in at.latex)
+
+
 def test_default_runs():
     at = fresh()
     assert "Laboratorio de volatilidad" in "".join(m.value for m in at.markdown)
+    # sin modelo ni tendencia: ecuaciones genéricas y aviso, sin simulación
+    eq = latex(at)
+    assert r"F(t,\mu_t,X_t)" in eq and r"a(t,V_t)" in eq and r"\equiv \mu" not in eq
+    assert any("para simular" in i.value for i in at.info)
+
+
+def test_generic_then_specific():
+    at = fresh()
+    at.pills(key="model").set_value("heston").run()
+    assert not at.exception
+    eq = latex(at)
+    assert r"F(t,\mu_t,X_t)" in eq and r"\sigma\sqrt{V_t}" in eq and r"a(t,V_t)" not in eq
+    at.pills(key="model").set_value(None)
+    at.segmented_control(key="trend").set_value("const").run()
+    assert not at.exception
+    eq = latex(at)
+    assert r"a(t,V_t)" in eq and r"\equiv \mu" in eq and "F(t" not in eq
+    select(at, "heston", "periodic")
+    assert not any("para simular" in i.value for i in at.info)
+
+
+def test_alpha_box():
+    at = select(fresh())
+    at.segmented_control(key="drift").set_value("mr").run()
+    at.number_input(key="alpha").set_value(7.5).run()
+    assert not at.exception, [e.value for e in at.exception]
 
 
 def test_all_combinations():
@@ -42,9 +80,7 @@ def test_all_combinations():
 
 
 def test_extreme_sliders():
-    at = fresh()
-    at.pills(key="model").set_value("heston")
-    at.run()
+    at = select(fresh(), "heston")
     at.slider(key="heston_sigma").set_value(1.5)
     at.slider(key="heston_kappa").set_value(0.1)
     at.slider(key="rho_heston").set_value(0.99)
@@ -56,9 +92,8 @@ def test_extreme_sliders():
 
 
 def test_changing_x0_in_mean_reversion():
-    at = fresh()
+    at = select(fresh(), trend="periodic")
     at.segmented_control(key="drift").set_value("mr")
-    at.segmented_control(key="trend").set_value("periodic")
     at.run()
     at.number_input(key="x0").set_value(500.0)   # los rangos de μ cambian con X₀
     at.run()
@@ -66,8 +101,7 @@ def test_changing_x0_in_mean_reversion():
 
 
 def test_lock_and_reference():
-    at = fresh()
-    at.pills(key="model").set_value("heston")
+    at = select(fresh(), "heston")
     at.toggle(key="lock").set_value(True)
     at.run()
     at.button[1].click()  # (0 = nueva semilla, 1 = fijar referencia)
@@ -79,7 +113,7 @@ def test_lock_and_reference():
 
 
 def test_new_seed_and_unfrozen_noise():
-    at = fresh()
+    at = select(fresh())
     at.button[0].click()
     at.run()
     assert not at.exception
@@ -89,7 +123,7 @@ def test_new_seed_and_unfrozen_noise():
 
 
 def test_compare_and_animate():
-    at = fresh()
+    at = select(fresh())
     at.toggle(key="animate").set_value(True)
     at.toggle(key="compare").set_value(True)
     at.run()
@@ -105,9 +139,7 @@ def test_compare_and_animate():
 
 
 def test_formula_and_boxes():
-    at = fresh()
-    at.segmented_control(key="trend").set_value("custom")
-    at.run()
+    at = select(fresh(), trend="custom")
     assert not at.exception, [e.value for e in at.exception]
     at.text_input(key="usual_custom_expr").set_value("0.08*exp(-2*t) + 0.1*step(t-0.5)").run()
     assert not at.exception
